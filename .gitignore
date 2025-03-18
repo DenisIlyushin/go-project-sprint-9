@@ -23,3 +23,13 @@ go.work.sum
 
 # env file
 .env
+
+/.idea
+/_junk
+remind.me
+/.idea/07.iml
+/.idea/modules.xml
+/remind.me
+/.idea/vcs.xml
+/tracker.db
+_junk.go
