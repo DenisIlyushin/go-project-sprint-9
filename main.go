@@ -66,9 +66,10 @@ func main() {
 		// предотвращаем гонку
 		atomic.AddInt64(&inputSum, i)
 		atomic.AddInt64(&inputCount, 1)
-		if inputCount >= 13087 { // Ограничиваем генерацию для тестирования
-			cancel()
-		}
+		//// Ограничиваем генерацию для тестирования
+		//if inputCount >= 13087 {
+		//	cancel()
+		//}
 	})
 
 	const NumOut = 15 // количество обработчиков
