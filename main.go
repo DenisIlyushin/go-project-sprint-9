@@ -29,8 +29,8 @@ func Generator(ctx context.Context, ch chan<- int64, fn func(int64)) {
 func Worker(in <-chan int64, out chan<- int64) {
 	defer close(out)
 	for num := range in {
-		out <- num // Перенаправляем данные в выходной канал
-		// time.Sleep(1 * time.Millisecond) // небольшая пауза
+		out <- num                       // Перенаправляем данные в выходной канал
+		time.Sleep(1 * time.Millisecond) // небольшая пауза
 	}
 }
 
