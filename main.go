@@ -7,74 +7,97 @@ import (
 	"sync"
 )
 
-// Generator генерирует последовательность чисел 1,2,3 и т.д. и
-// отправляет их в канал ch. При этом после записи в канал для каждого числа
-// вызывается функция fn. Она служит для подсчёта количества и суммы
-// сгенерированных чисел.
+// Generator генерирует последовательность чисел 1,2,3 и т.д.
+// и отправляет их в канал ch, вызывая fn для каждого числа.
 func Generator(ctx context.Context, ch chan<- int64, fn func(int64)) {
-	// 1. Функция Generator
-	// ...
+	defer close(ch)
+	var i int64 = 1
+	for {
+		select {
+		case <-ctx.Done(): // Завершаем генерацию при завершении контекста
+			return
+		case ch <- i: // Отправляем число в канал и вызываем функцию подсчета
+			fn(i)
+			i++
+		}
+	}
 }
 
 // Worker читает число из канала in и пишет его в канал out.
 func Worker(in <-chan int64, out chan<- int64) {
-	// 2. Функция Worker
-	// ...
+	defer close(out)
+	for num := range in {
+		out <- num // Перенаправляем данные в выходной канал
+	}
+}
+
+// Merge читает числа из нескольких каналов и пишет их в один канал.
+func Merge(chOut chan<- int64, outs []<-chan int64, amounts []int64) {
+	var wg sync.WaitGroup
+	wg.Add(len(outs)) // Добавляем количество горутин в счетчик
+
+	for i, ch := range outs {
+		go func(i int, ch <-chan int64) {
+			defer wg.Done() // Уменьшаем счетчик по завершении работы горутины
+			for num := range ch {
+				chOut <- num // Отправляем число в результирующий канал
+				amounts[i]++ // Увеличиваем счетчик чисел в данном канале
+			}
+		}(i, ch)
+	}
+
+	wg.Wait()    // Ожидаем завершения всех горутин
+	close(chOut) // Закрываем результирующий канал
 }
 
 func main() {
 	chIn := make(chan int64)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel() // Гарантируем освобождение ресурсов контекста
 
-	// 3. Создание контекста
-	// ...
-
-	// для проверки будем считать количество и сумму отправленных чисел
 	var inputSum int64   // сумма сгенерированных чисел
 	var inputCount int64 // количество сгенерированных чисел
 
-	// генерируем числа, считая параллельно их количество и сумму
+	// Запускаем генератор чисел
 	go Generator(ctx, chIn, func(i int64) {
 		inputSum += i
 		inputCount++
+		if inputCount >= 4558 { // Ограничиваем генерацию для тестирования
+			cancel()
+		}
 	})
 
-	const NumOut = 5 // количество обрабатывающих горутин и каналов
-	// outs — слайс каналов, куда будут записываться числа из chIn
+	const NumOut = 5 // количество обработчиков
+
 	outs := make([]chan int64, NumOut)
+	outsReadonly := make([]<-chan int64, NumOut) // Создаем слайс с правильным типом
+
 	for i := 0; i < NumOut; i++ {
-		// создаём каналы и для каждого из них вызываем горутину Worker
 		outs[i] = make(chan int64)
-		go Worker(chIn, outs[i])
+		outsReadonly[i] = outs[i] // Приводим к типу []<-chan int64
+		go Worker(chIn, outs[i])  // Запускаем воркера
 	}
 
-	// amounts — слайс, в который собирается статистика по горутинам
-	amounts := make([]int64, NumOut)
-	// chOut — канал, в который будут отправляться числа из горутин `outs[i]`
+	amounts := make([]int64, NumOut) // Храним количество элементов в каждом канале
 	chOut := make(chan int64, NumOut)
 
-	var wg sync.WaitGroup
+	// Ждём завершения всех воркеров перед запуском Merge
+	go Merge(chOut, outsReadonly, amounts)
 
-	// 4. Собираем числа из каналов outs
-	// ...
+	var count int64
+	var sum int64
 
-	go func() {
-		// ждём завершения работы всех горутин для outs
-		wg.Wait()
-		// закрываем результирующий канал
-		close(chOut)
-	}()
+	// Читаем числа из результирующего канала
+	for num := range chOut {
+		sum += num
+		count++
+	}
 
-	var count int64 // количество чисел результирующего канала
-	var sum int64   // сумма чисел результирующего канала
-
-	// 5. Читаем числа из результирующего канала
-	// ...
-
+	// Выводим статистику
 	fmt.Println("Количество чисел", inputCount, count)
 	fmt.Println("Сумма чисел", inputSum, sum)
 	fmt.Println("Разбивка по каналам", amounts)
 
-	// проверка результатов
 	if inputSum != sum {
 		log.Fatalf("Ошибка: суммы чисел не равны: %d != %d\n", inputSum, sum)
 	}
