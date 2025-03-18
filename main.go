@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"sync/atomic"
+	"time"
 )
 
 // Generator генерирует последовательность чисел 1,2,3 и т.д.
@@ -28,6 +30,7 @@ func Worker(in <-chan int64, out chan<- int64) {
 	defer close(out)
 	for num := range in {
 		out <- num // Перенаправляем данные в выходной канал
+		// time.Sleep(1 * time.Millisecond) // небольшая пауза
 	}
 }
 
@@ -52,7 +55,7 @@ func Merge(chOut chan<- int64, outs []<-chan int64, amounts []int64) {
 
 func main() {
 	chIn := make(chan int64)
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel() // Гарантируем освобождение ресурсов контекста
 
 	var inputSum int64   // сумма сгенерированных чисел
@@ -60,14 +63,15 @@ func main() {
 
 	// Запускаем генератор чисел
 	go Generator(ctx, chIn, func(i int64) {
-		inputSum += i
-		inputCount++
-		if inputCount >= 4558 { // Ограничиваем генерацию для тестирования
+		// предотвращаем гонку
+		atomic.AddInt64(&inputSum, i)
+		atomic.AddInt64(&inputCount, 1)
+		if inputCount >= 13087 { // Ограничиваем генерацию для тестирования
 			cancel()
 		}
 	})
 
-	const NumOut = 5 // количество обработчиков
+	const NumOut = 15 // количество обработчиков
 
 	outs := make([]chan int64, NumOut)
 	outsReadonly := make([]<-chan int64, NumOut) // Создаем слайс с правильным типом
